@@ -8,9 +8,6 @@ on:
         type: boolean
         default: true
 
-env:
-  UNIXNU_DEVICE: ../UniXNU-device
-
 jobs:
   kernel:
     runs-on: macos-26
@@ -33,23 +30,11 @@ jobs:
         run: |
           brew install cmake ninja tcsh unifdef cpio mtools dtc gnu-sed rsync || true
 
+      - name: Clone device repo (merlinx — hosts the vendored unixnu tool)
+        run: git clone --recurse-submodules -b merlinx-work https://github.com/Dracen-W/UniXNU-merlinx UniXNU-device
+
       - name: Clone UniXNU core
         run: git clone --recurse-submodules https://github.com/UniXNU/UniXNU
-
-      - name: Pin core to pre-restructure revision (before 2026-11-03)
-        run: |
-          SHA=$(curl -sf "https://api.github.com/repos/UniXNU/UniXNU/commits?until=2026-11-03T00:00:00Z&per_page=1" \
-                | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['sha'])" || true)
-          if [ -n "$SHA" ]; then
-            echo "Pinning UniXNU core to $SHA"
-            git -C UniXNU checkout "$SHA"
-            git -C UniXNU submodule update --init --recursive || true
-          else
-            echo "::warning::Could not resolve pin SHA via API; using core main HEAD"
-          fi
-
-      - name: Clone device repo (merlinx)
-        run: git clone --recurse-submodules -b merlinx-work https://github.com/Dracen-W/UniXNU-merlinx UniXNU-device
 
       - name: Clone firmware repo
         run: git clone --recurse-submodules https://github.com/Dracen-W/uefi-merlinx uefi-device
@@ -57,53 +42,42 @@ jobs:
       - name: Record source revisions
         run: |
           {
-            echo "UniXNU        $(git -C UniXNU rev-parse HEAD)"
             echo "UniXNU-device $(git -C UniXNU-device rev-parse HEAD)"
+            echo "UniXNU        $(git -C UniXNU rev-parse HEAD)"
             echo "uefi-device   $(git -C uefi-device rev-parse HEAD)"
             echo "Xcode         $(xcodebuild -version | tr '\n' ' ')"
-            echo "Runner        $(sw_vers -productVersion 2>/dev/null || echo unknown)"
           } | tee build-info.txt
 
-      - name: Write unixnu.local.toml
+      - name: Configure merlinx (from the device repo)
         run: |
-          cd UniXNU
-          cat > unixnu.local.toml <<'EOF'
-          [build]
-          device = "../UniXNU-device"
-          uefi = "../uefi-device"
-          EOF
-          cat unixnu.local.toml
-
-      - name: Configure merlinx
-        run: |
-          cd UniXNU
-          ./unixnu defconfig merlinx_defconfig -D ../UniXNU-device
+          cd UniXNU-device
+          ./unixnu defconfig merlinx_defconfig
 
       - name: Fetch pinned sources
         run: |
-          cd UniXNU
-          ./unixnu fetch -D ../UniXNU-device
+          cd UniXNU-device
+          ./unixnu fetch
 
       - name: Fetch OS profile
         if: ${{ inputs.fetch_ipsw }}
         run: |
-          cd UniXNU
+          cd UniXNU-device
           ./unixnu ipsw info
           ./unixnu ipsw fetch
 
       - name: Assemble target tree
         run: |
-          cd UniXNU
+          cd UniXNU-device
           ./unixnu tree
 
       - name: Build kernel
         run: |
-          cd UniXNU
+          cd UniXNU-device
           ./unixnu build kernel 2>&1 | tee ../kernel-build.log
 
       - name: Collect artifacts
         run: |
-          cd UniXNU
+          cd UniXNU-device
           mkdir -p ../artifacts
           find out -name 'kernel.macho' -exec cp {} ../artifacts/ \;
           cp ../kernel-build.log ../build-info.txt ../artifacts/ 2>/dev/null || true
