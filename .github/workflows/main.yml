@@ -1,0 +1,102 @@
+name: Build UniXNU kernel (merlinx)
+
+on:
+  workflow_dispatch:
+    inputs:
+      fetch_ipsw:
+        description: 'Also fetch iPadOS 17.7.11 21H461 restore image (payload/userland; kernel-only may not need it)'
+        type: boolean
+        default: false
+
+jobs:
+  kernel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          sudo docker image prune -af || true
+          df -h /
+
+      - name: Install base packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git patch flex bison bzip2 cpio rsync curl wget \
+            ca-certificates tcsh unifdef cmake clang lld mtools build-essential \
+            pkg-config ninja-build python3 python3-dev xz-utils libssl-dev zlib1g-dev \
+            libbsd-dev uuid-dev llvm-dev libclang-dev device-tree-compiler
+
+      - name: Clone UniXNU core
+        run: git clone --recurse-submodules https://github.com/UniXNU/UniXNU
+
+      - name: Clone device repo (merlinx)
+        run: git clone --recurse-submodules -b merlinx-work https://github.com/Dracen-W/UniXNU-merlinx UniXNU-device
+
+      - name: Clone firmware repo
+        run: git clone --recurse-submodules https://github.com/Dracen-W/uefi-merlinx uefi-device
+
+      - name: Record source revisions
+        run: |
+          {
+            echo "UniXNU        $(git -C UniXNU rev-parse HEAD)"
+            echo "UniXNU-device $(git -C UniXNU-device rev-parse HEAD)"
+            echo "uefi-device   $(git -C uefi-device rev-parse HEAD)"
+          } | tee build-info.txt
+
+      - name: Cache UniXNU Linux toolchain
+        id: toolchain-cache
+        uses: actions/cache@v4
+        with:
+          path: /opt/unixnu-linux
+          key: unixnu-toolchain-${{ hashFiles('UniXNU-device/scripts/linux/setup-toolchain.py') }}
+
+      - name: Build toolchain (patched clang + ld64 + mig + iig)
+        if: steps.toolchain-cache.outputs.cache-hit != 'true'
+        run: |
+          cd UniXNU
+          sudo python3 ../UniXNU-device/scripts/linux/setup-toolchain.py
+          df -h /
+
+      - name: Configure merlinx
+        run: |
+          cd UniXNU
+          ./unixnu defconfig merlinx_defconfig -D ../UniXNU-device
+
+      - name: Fetch pinned sources
+        run: |
+          cd UniXNU
+          ./unixnu fetch
+          ./unixnu status --json > ../unixnu-status.json || true
+
+      - name: Fetch OS profile (optional)
+        if: ${{ inputs.fetch_ipsw }}
+        run: |
+          cd UniXNU
+          ./unixnu ipsw info
+          ./unixnu ipsw fetch
+
+      - name: Assemble target tree
+        run: |
+          cd UniXNU
+          ./unixnu tree
+
+      - name: Build kernel
+        run: |
+          cd UniXNU
+          ./unixnu build kernel 2>&1 | tee ../kernel-build.log
+
+      - name: Collect artifacts
+        run: |
+          cd UniXNU
+          mkdir -p ../artifacts
+          find out -name 'kernel.macho' -exec cp {} ../artifacts/ \;
+          cp ../kernel-build.log ../build-info.txt ../unixnu-status.json ../artifacts/ 2>/dev/null || true
+          find ../artifacts -name 'kernel.macho' -exec sha256sum {} \; | tee ../artifacts/SHA256SUMS.txt
+          ls -la ../artifacts
+
+      - name: Upload kernel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: merlinx-kernel
+          path: artifacts/
