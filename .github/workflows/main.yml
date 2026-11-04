@@ -1,31 +1,34 @@
-name: Build UniXNU kernel (merlinx)
+name: Build UniXNU kernel (merlinx, macOS)
 
 on:
   workflow_dispatch:
     inputs:
       fetch_ipsw:
-        description: 'Also fetch iPadOS 17.7.11 21H461 restore image (payload/userland; kernel-only may not need it)'
+        description: 'Fetch iPadOS 17.7.11 21H461 restore image'
         type: boolean
-        default: false
+        default: true
 
 jobs:
   kernel:
-    runs-on: ubuntu-latest
+    runs-on: macos-26          # arm64 M1; use macos-26-xlarge if prelink runs out of RAM (paid)
     timeout-minutes: 350
     steps:
-      - name: Free disk space
+      - name: Select Xcode 26.x
         run: |
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
-          sudo docker image prune -af || true
-          df -h /
+          ls /Applications | grep -i xcode || true
+          if [ -d /Applications/Xcode_26.6.app ]; then
+            sudo xcode-select -s /Applications/Xcode_26.6.app
+          else
+            XCODE_APP=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+            echo "Using $XCODE_APP (26.6 not present)"
+            sudo xcode-select -s "$XCODE_APP"
+          fi
+          xcodebuild -version && xcrun --find clang && xcrun --find mig || true
 
-      - name: Install base packages
+      - name: Install build tools
         run: |
-          sudo apt-get update
-          sudo apt-get install -y git patch flex bison bzip2 cpio rsync curl wget \
-            ca-certificates tcsh unifdef cmake clang lld mtools build-essential \
-            pkg-config ninja-build python3 python3-dev xz-utils libssl-dev zlib1g-dev \
-            libbsd-dev uuid-dev llvm-dev libclang-dev device-tree-compiler
+          brew install cmake ninja tcsh unifdef cpio mtools dtc gnu-sed rsync || true
+          brew list cmake ninja >/dev/null 2>&1 || brew install cmake ninja
 
       - name: Clone UniXNU core
         run: git clone --recurse-submodules https://github.com/UniXNU/UniXNU
@@ -42,21 +45,8 @@ jobs:
             echo "UniXNU        $(git -C UniXNU rev-parse HEAD)"
             echo "UniXNU-device $(git -C UniXNU-device rev-parse HEAD)"
             echo "uefi-device   $(git -C uefi-device rev-parse HEAD)"
+            echo "Xcode         $(xcodebuild -version | tr '\n' ' ')"
           } | tee build-info.txt
-
-      - name: Cache UniXNU Linux toolchain
-        id: toolchain-cache
-        uses: actions/cache@v4
-        with:
-          path: /opt/unixnu-linux
-          key: unixnu-toolchain-${{ hashFiles('UniXNU-device/scripts/linux/setup-toolchain.py') }}
-
-      - name: Build toolchain (patched clang + ld64 + mig + iig)
-        if: steps.toolchain-cache.outputs.cache-hit != 'true'
-        run: |
-          cd UniXNU
-          sudo python3 ../UniXNU-device/scripts/linux/setup-toolchain.py
-          df -h /
 
       - name: Configure merlinx
         run: |
@@ -67,9 +57,8 @@ jobs:
         run: |
           cd UniXNU
           ./unixnu fetch
-          ./unixnu status --json > ../unixnu-status.json || true
 
-      - name: Fetch OS profile (optional)
+      - name: Fetch OS profile
         if: ${{ inputs.fetch_ipsw }}
         run: |
           cd UniXNU
@@ -91,12 +80,12 @@ jobs:
           cd UniXNU
           mkdir -p ../artifacts
           find out -name 'kernel.macho' -exec cp {} ../artifacts/ \;
-          cp ../kernel-build.log ../build-info.txt ../unixnu-status.json ../artifacts/ 2>/dev/null || true
-          find ../artifacts -name 'kernel.macho' -exec sha256sum {} \; | tee ../artifacts/SHA256SUMS.txt
+          cp ../kernel-build.log ../build-info.txt ../artifacts/ 2>/dev/null || true
+          find ../artifacts -name 'kernel.macho' -exec shasum -a 256 {} \; | tee ../artifacts/SHA256SUMS.txt
           ls -la ../artifacts
 
       - name: Upload kernel artifact
         uses: actions/upload-artifact@v4
         with:
-          name: merlinx-kernel
+          name: merlinx-kernel-macos
           path: artifacts/
