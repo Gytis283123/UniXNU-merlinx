@@ -48,15 +48,15 @@ jobs:
             echo "Xcode         $(xcodebuild -version | tr '\n' ' ')"
           } | tee build-info.txt
 
-      - name: Configure merlinx (from the device repo)
+      - name: Configure merlinx
         run: |
           cd UniXNU-device
-          ./unixnu defconfig merlinx_defconfig
+          ./unixnu defconfig merlinx_defconfig -D .
 
       - name: Fetch pinned sources
         run: |
           cd UniXNU-device
-          ./unixnu fetch
+          ./unixnu fetch -D .
 
       - name: Fetch OS profile
         if: ${{ inputs.fetch_ipsw }}
