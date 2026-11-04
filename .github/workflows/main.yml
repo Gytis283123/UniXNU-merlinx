@@ -71,7 +71,10 @@ jobs:
           ./unixnu tree
 
       - name: Build kernel
+        env:
+          UNIXNU_DEVICE: ${{ github.workspace }}/UniXNU-device
         run: |
+          set -o pipefail
           cd UniXNU-device
           ./unixnu build kernel 2>&1 | tee ../kernel-build.log
 
