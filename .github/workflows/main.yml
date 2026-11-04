@@ -28,7 +28,7 @@ jobs:
 
       - name: Install build tools
         run: |
-          brew install cmake ninja tcsh unifdef cpio mtools dtc gnu-sed rsync || true
+          brew install llvm cmake ninja tcsh unifdef cpio mtools dtc gnu-sed rsync || true
 
       - name: Clone device repo (merlinx — hosts the vendored unixnu tool)
         run: git clone --recurse-submodules -b merlinx-work https://github.com/Dracen-W/UniXNU-merlinx UniXNU-device
