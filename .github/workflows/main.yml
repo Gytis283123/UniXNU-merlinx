@@ -73,6 +73,9 @@ jobs:
       - name: Build kernel
         env:
           UNIXNU_DEVICE: ${{ github.workspace }}/UniXNU-device
+          # prepare-xnu-source.py lists Apple sources through the GitHub API; anonymous calls from hosted
+          # runners hit the shared IP rate limit (HTTP 403), so send the workflow token.
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -o pipefail
           cd UniXNU-device
