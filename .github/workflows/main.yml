@@ -112,7 +112,7 @@ jobs:
           # merlinx builds its Apple ADT through the custom make-merlinx-adt.py, so the payload step
           # never writes the hardware DTB. Compile it here via the tool's own [device_tree] config
           # (dts/merlinx.dts with the soc profile include dirs), exactly like compile_hardware does.
-          DTB_FILE="$GITHUB_WORKSPACE/dtb-path.txt"
+          export DTB_FILE="$GITHUB_WORKSPACE/dtb-path.txt"
           python3 - <<'PY'
           import sys
           sys.path.insert(0, 'scripts')
