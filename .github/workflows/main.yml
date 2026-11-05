@@ -12,7 +12,7 @@ on:
         default: 'merlinx-work'
       uefi_ref:
         description: 'Firmware repo ref — pin a commit to bisect firmware regressions'
-        default: 'merlinx'
+        default: '49462c9374c96229848c9a11f308e33589d6ced3'
 
 jobs:
   kernel:
