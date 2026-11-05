@@ -1,4 +1,4 @@
-name: Build UniXNU kernel (merlinx, macOS)
+name: Build UniXNU kernel + boot image (merlinx, macOS)
 
 on:
   workflow_dispatch:
@@ -28,7 +28,7 @@ jobs:
 
       - name: Install build tools
         run: |
-          brew install llvm cmake ninja tcsh unifdef cpio mtools dtc gnu-sed rsync || true
+          brew install llvm lld cmake ninja tcsh unifdef cpio mtools dtc gnu-sed rsync || true
 
       - name: Clone device repo (merlinx — hosts the vendored unixnu tool)
         run: git clone --recurse-submodules -b merlinx-work https://github.com/Dracen-W/UniXNU-merlinx UniXNU-device
@@ -78,6 +78,35 @@ jobs:
           cd UniXNU-device
           ./unixnu build kernel 2>&1 | tee ../kernel-build.log
 
+      - name: Build the UniXNU package and UEFI firmware
+        env:
+          UNIXNU_DEVICE: ${{ github.workspace }}/UniXNU-device
+          UNIXNU_UEFI: ${{ github.workspace }}/uefi-device
+        run: |
+          set -o pipefail
+          cd UniXNU-device
+          ./unixnu build package firmware 2>&1 | tee ../firmware-build.log
+
+      - name: Build payload
+        env:
+          UNIXNU_DEVICE: ${{ github.workspace }}/UniXNU-device
+          UNIXNU_UEFI: ${{ github.workspace }}/uefi-device
+        run: |
+          set -o pipefail
+          cd UniXNU-device
+          ./unixnu build payload 2>&1 | tee ../payload-build.log
+
+      - name: Pack the boot image
+        env:
+          UNIXNU_DEVICE: ${{ github.workspace }}/UniXNU-device
+          UNIXNU_UEFI: ${{ github.workspace }}/uefi-device
+        run: |
+          set -o pipefail
+          cd UniXNU-device
+          DTB=$(find out -path '*device-tree/hardware.dtb' | head -1)
+          echo "device tree: $DTB"
+          ./unixnu bootimg --dtb "$DTB" 2>&1 | tee ../bootimg-build.log
+
       - name: Collect artifacts
         run: |
           cd UniXNU-device
@@ -87,8 +116,31 @@ jobs:
           find ../artifacts -name 'kernel.macho' -exec shasum -a 256 {} \; | tee ../artifacts/SHA256SUMS.txt
           ls -la ../artifacts
 
+      - name: Collect boot artifacts
+        run: |
+          cd UniXNU-device
+          mkdir -p ../boot-artifacts
+          find out -name 'boot.img'    -exec cp {} ../boot-artifacts/ \;
+          find out -name 'boot.json'   -exec cp {} ../boot-artifacts/ \;
+          find out -name 'payload.img' -exec cp {} ../boot-artifacts/ \;
+          find out -name 'payload.json' -exec cp {} ../boot-artifacts/ \;
+          find ../uefi-device/Build -name 'SILICIUM_UEFI.fd' -exec cp {} ../boot-artifacts/ \;
+          find out -path '*device-tree/hardware.dtb' -exec cp {} ../boot-artifacts/merlinx.dtb \;
+          cp ../firmware-build.log ../payload-build.log ../bootimg-build.log ../build-info.txt ../boot-artifacts/ 2>/dev/null || true
+          cd ../boot-artifacts
+          shasum -a 256 -- * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          ls -la
+
       - name: Upload kernel artifact
         uses: actions/upload-artifact@v4
         with:
           name: merlinx-kernel-macos
           path: artifacts/
+
+      - name: Upload boot image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: merlinx-boot-macos
+          path: boot-artifacts/
+          if-no-files-found: error
