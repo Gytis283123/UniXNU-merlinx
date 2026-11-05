@@ -94,6 +94,9 @@ jobs:
         env:
           UNIXNU_DEVICE: ${{ github.workspace }}/UniXNU-device
           UNIXNU_UEFI: ${{ github.workspace }}/uefi-device
+          # 64-bit platform seed: with --chip-id it generates the IOPlatformUUID (gethostuuid() hangs
+          # without it). Synthetic "merlinx1" placeholder; set a UNIXNU_UNIQUE_CHIP_ID secret to override.
+          UNIXNU_UNIQUE_CHIP_ID: ${{ secrets.UNIXNU_UNIQUE_CHIP_ID || '6d65726c696e7831' }}
         run: |
           set -o pipefail
           cd UniXNU-device
