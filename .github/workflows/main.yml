@@ -7,6 +7,12 @@ on:
         description: 'Fetch iPadOS 17.7.11 21H461 restore image'
         type: boolean
         default: true
+      device_ref:
+        description: 'Device repo ref (branch, tag or commit) to build'
+        default: 'merlinx-work'
+      uefi_ref:
+        description: 'Firmware repo ref — pin a commit to bisect firmware regressions'
+        default: 'merlinx'
 
 jobs:
   kernel:
@@ -31,13 +37,19 @@ jobs:
           brew install llvm lld cmake ninja tcsh unifdef cpio mtools dtc gnu-sed rsync || true
 
       - name: Clone device repo (merlinx — hosts the vendored unixnu tool)
-        run: git clone --recurse-submodules -b merlinx-work https://github.com/Dracen-W/UniXNU-merlinx UniXNU-device
+        run: |
+          git clone --recurse-submodules -b merlinx-work https://github.com/Dracen-W/UniXNU-merlinx UniXNU-device
+          git -C UniXNU-device checkout "${{ inputs.device_ref }}"
+          git -C UniXNU-device submodule update --init --recursive
 
       - name: Clone UniXNU core
         run: git clone --recurse-submodules https://github.com/UniXNU/UniXNU
 
       - name: Clone firmware repo
-        run: git clone --recurse-submodules https://github.com/Dracen-W/uefi-merlinx uefi-device
+        run: |
+          git clone --recurse-submodules https://github.com/Dracen-W/uefi-merlinx uefi-device
+          git -C uefi-device checkout "${{ inputs.uefi_ref }}"
+          git -C uefi-device submodule update --init --recursive
 
       - name: Record source revisions
         run: |
