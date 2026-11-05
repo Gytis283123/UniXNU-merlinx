@@ -112,16 +112,19 @@ jobs:
           # merlinx builds its Apple ADT through the custom make-merlinx-adt.py, so the payload step
           # never writes the hardware DTB. Compile it here via the tool's own [device_tree] config
           # (dts/merlinx.dts with the soc profile include dirs), exactly like compile_hardware does.
-          DTB=$(python3 - <<'PY'
+          DTB_FILE="$GITHUB_WORKSPACE/dtb-path.txt"
+          python3 - <<'PY'
           import sys
           sys.path.insert(0, 'scripts')
+          from pathlib import Path
           from unixnu.cli import parser
           from unixnu.config import Context
           from unixnu.devicetree import compile_hardware
           ctx = Context(parser().parse_args(['status']))
-          print(compile_hardware(ctx))
+          import os
+          Path(os.environ['DTB_FILE']).write_text(str(compile_hardware(ctx)) + '\n')
           PY
-          )
+          DTB=$(cat "$DTB_FILE")
           echo "device tree: $DTB"
           [ -n "$DTB" ] && [ -f "$DTB" ]
           ./unixnu bootimg --dtb "$DTB" 2>&1 | tee ../bootimg-build.log
