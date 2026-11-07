@@ -2,7 +2,7 @@ diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
 index a5ff474..4704203 100644
 --- a/bsd/kern/kern_exec.c
 +++ b/bsd/kern/kern_exec.c
-@@ -7193,6 +7193,321 @@ uint64_t native_owner_data_seed_base, native_owner_data_seed_size;
+@@ -7193,6 +7193,323 @@ uint64_t native_owner_data_seed_base, native_owner_data_seed_size;
  uint8_t native_owner_data_seed_sha256[32];
  char native_owner_data_device_path[64];
  
@@ -169,6 +169,8 @@ index a5ff474..4704203 100644
 +		struct vnode_attr va;
 +		VATTR_INIT(&va);
 +		VATTR_SET(&va, va_mode, mode);
++		/* Kernel vnode_open does not finish O_TRUNC on the non-compound path. */
++		VATTR_SET(&va, va_data_size, size);
 +		error = vnode_setattr(vp, &va, ctx);
 +	}
 +	if (!error) {
@@ -304,11 +306,11 @@ index a5ff474..4704203 100644
 +	static const char daemons_source[] = "/private/var/ngpu/daemons", daemons_point[] = "/System/Library/LaunchDaemons";
 +	native_gpu_addon_mount(p, scratch, 0x400, extensions_source, sizeof(extensions_source), extensions_point,
 +	    sizeof(extensions_point), "/System/Library/Extensions/AGXMetalA10.bundle",
-+	    "/System/Library/Extensions/NativeAdrenoMetal.bundle/Info.plist", &native_gpu_addon_stage,
++	    "/System/Library/Extensions/NativeMaliMetal.bundle/Info.plist", &native_gpu_addon_stage,
 +	    &native_gpu_addon_status);
 +	native_gpu_addon_mount(p, scratch, 0x600, daemons_source, sizeof(daemons_source), daemons_point, sizeof(daemons_point),
 +	    "/System/Library/LaunchDaemons/com.apple.backboardd.plist",
-+	    "/System/Library/LaunchDaemons/org.blu-sharky.adrenoprobed.plist", &native_gpu_addon2_stage, &native_gpu_addon2_status);
++	    "/System/Library/LaunchDaemons/com.apple.iomfb_fdr_loader.plist", &native_gpu_addon2_stage, &native_gpu_addon2_status);
 +	/* The default iPadOS 17 wallpaper's layered animation with PNG images in place of its HEIC ones (no hardware HEVC decoder here).
 +	 * The overlay carries the animation's documents and the PNG images; the sealed assets directory stays visible below it. */
 +	static const char wallpaper_source[] = "/private/var/ngpu/wallpaper",
@@ -371,7 +373,7 @@ diff --git a/bsd/miscfs/bindfs/bind_vnops.c b/bsd/miscfs/bindfs/bind_vnops.c
 index 8609009..0c659c7 100644
 --- a/bsd/miscfs/bindfs/bind_vnops.c
 +++ b/bsd/miscfs/bindfs/bind_vnops.c
-@@ -105,6 +105,14 @@ bindfs_getattr(struct vnop_getattr_args * args)
+@@ -105,5 +105,13 @@ bindfs_getattr(struct vnop_getattr_args * args)
  		vnode_put(lowervp);
 
  		if (error == 0) {
@@ -390,7 +392,7 @@ diff --git a/bsd/miscfs/bindfs/bindfs.h b/bsd/miscfs/bindfs/bindfs.h
 index c3bebc8..4555530 100644
 --- a/bsd/miscfs/bindfs/bindfs.h
 +++ b/bsd/miscfs/bindfs/bindfs.h
-@@ -81,6 +81,9 @@
+@@ -81,4 +81,7 @@
  //#define BINDFS_DEBUG 0
 
  #define BINDM_CACHE 0x0001
